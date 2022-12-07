@@ -1,6 +1,6 @@
-// #![allow(unused_imports)]
-// #![allow(unused_variables)]
-// #![allow(dead_code)]
+#![allow(unused_imports)]
+#![allow(unused_variables)]
+#![allow(dead_code)]
 use std::{sync::Mutex, collections::HashMap};
 use serde::{Serialize, Deserialize};
 use actix_web::{get, post, web, App, HttpResponse, HttpServer, Responder, delete};
@@ -33,7 +33,7 @@ struct AppState {
 }
 
 #[get("/")]
-async fn get_main() -> impl Responder {
+async fn get_index() -> impl Responder {
     HttpResponse::Ok().body("Hello world!")
 }
 
@@ -83,7 +83,7 @@ async fn delete_orders(state: web::Data<Mutex<AppState>>) -> impl Responder {
 }
 
 #[get("/products/{product_id}/bought_together")]
-async fn get_product(state: web::Data<Mutex<AppState>>, path: web::Path<ProductId>) -> impl Responder {
+async fn get_bought_together(state: web::Data<Mutex<AppState>>, path: web::Path<ProductId>) -> impl Responder {
     let product_id = path.into_inner();
     let mut product_count_map: HashMap<ProductId, u32> = HashMap::new();
     let orders = & state.lock().unwrap().orders;
@@ -104,9 +104,6 @@ async fn get_product(state: web::Data<Mutex<AppState>>, path: web::Path<ProductI
             .into_iter()
             .collect();
 
-
-    println!("{}", json!({"product_id": product_id}));
-
     let serached_product_index = entries.iter()
         .position(|p| {
             println!("{}", json!({"p": p}));
@@ -115,12 +112,7 @@ async fn get_product(state: web::Data<Mutex<AppState>>, path: web::Path<ProductI
         })
         .unwrap();
 
-    println!("{}", json!({"serached_product_index": serached_product_index}));
-
     entries.remove(serached_product_index);
-
-    println!("{:#?}", entries);
-
     entries.sort_by_key(|e| { e.1.clone() });
     entries.reverse();
 
@@ -133,60 +125,9 @@ async fn get_product(state: web::Data<Mutex<AppState>>, path: web::Path<ProductI
     HttpResponse::Ok().json(product_list)
 }
 
-#[get("/prod/{product_id}")]
-async fn get_product_from_db(db: web::Data<Database>) -> impl Responder {
-    let coll = db.collection::<Product>("product");
-
-    let mut cursor = match coll.find(
-        doc! {},
-        FindOptions::builder()
-            // .projection(doc! {
-            //     "name": true,
-            // })
-            .sort(doc! {
-                "name": 1,
-            })
-            .limit(5)
-            .build()
-    ).await {
-        Ok(c) => c,
-        Err(e) => {
-            return HttpResponse::InternalServerError().body(
-                e.to_string().trim().to_string()
-            );
-        },
-    };
-
-    let mut output: Vec<String> = vec![];
-
-    while let Ok(v) = cursor.advance().await {
-        if v {
-            output.push(cursor.current().get_str("name").unwrap().to_string());
-        } else {
-            break;
-        }
-    }
-
-    HttpResponse::Ok()
-        .content_type("application/json; charset=utf-8")
-        .body(format!("{:?}", output))
-}
-
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    std::env::set_var("RUST_LOG", "debug");
     env_logger::init();
-
-    let result = Client::with_uri_str(
-        "mongodb://127.0.0.1:27017/poczytajmi"
-    ).await;
-
-    let conn = match result {
-        Ok(cli) => cli,
-        Err(e) => panic!("{}", e),
-    };
-
-    let db = conn.database("poczytajmi");
 
     let state = web::Data::new(
         Mutex::new(
@@ -198,10 +139,9 @@ async fn main() -> std::io::Result<()> {
 
     HttpServer::new(move || {
         App::new()
-            .app_data(web::Data::new(db.clone()))
             .app_data(state.clone())
-            .service(get_main)
-            .service(get_product)
+            .service(get_index)
+            .service(get_bought_together)
             .service(get_orders)
             .service(delete_orders)
             .service(post_order)
